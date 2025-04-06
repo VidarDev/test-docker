@@ -1,0 +1,30 @@
+providers:
+  docker:
+    exposedByDefault: false
+    network: ps-traefik-network
+  file:
+    directory: /etc/traefik/dynamic
+
+api:
+  dashboard: true
+
+entryPoints:
+  http:
+    address: :80
+  https:
+    address: :443
+  metrics:
+    address: :8082
+
+certificatesResolvers:
+  le:
+    acme:
+      email: test@test.com
+      storage: /etc/traefik/acme.json
+      httpChallenge:
+        entryPoint: http
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
