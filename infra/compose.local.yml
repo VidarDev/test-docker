@@ -1,6 +1,6 @@
 services:
   smtp:
-    container_name: ps-smtp
+    container_name: ${COMPOSE_PROJECT_NAME}-smtp
     image: axllent/mailpit
     restart: "${RESTART:-always}"
     ports:

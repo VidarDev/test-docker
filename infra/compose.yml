@@ -1,45 +1,72 @@
 services:
+  # Proxy
+  traefik:
+    container_name: ${COMPOSE_PROJECT_NAME}-traefik
+    image: traefik:v3.3.5
+    restart: ${RESTART:-always}
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - traefik
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/traefik:/etc/traefik
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.traefik.entrypoints: http
+      traefik.http.routers.traefik.rule: Host(`traefik.${DOMAIN}`)
+      traefik.http.routers.traefik.middlewares: redirect-to-https@file
+      traefik.http.routers.traefik-secure.middlewares: basic-auth@file
+      traefik.http.routers.traefik-secure.service: api@internal
+      traefik.http.routers.traefik-secure.entrypoints: https
+      traefik.http.routers.traefik-secure.rule: Host(`traefik.${DOMAIN}`)
+      traefik.http.routers.traefik-secure.tls: "true"
+      traefik.http.routers.traefik-secure.tls.certresolver: le
+      traefik.http.routers.metrics-secure.entrypoints: https
+      traefik.http.routers.metrics-secure.rule: Host(`traefik.${DOMAIN}`) && PathPrefix(`/metrics`)
+      traefik.http.routers.metrics-secure.tls: "true"
+      traefik.http.routers.metrics-secure.tls.certresolver: le
+      traefik.http.routers.metrics-secure.service: prometheus@internal
+      traefik.http.services.metrics-secure.loadbalancer.server.port: 8082
+
+  # Application
   prestashop:
-    container_name: ps-prestashop
+    container_name: ${COMPOSE_PROJECT_NAME}-prestashop
     build:
       context: docker/prestashop
       dockerfile: Dockerfile
       target: prestashop
     restart: ${RESTART:-unless-stopped}
     depends_on:
-      - database
+      - mariadb
       - smtp
     environment:
-      DB_SERVER: ps-database
+      DB_SERVER: ${COMPOSE_PROJECT_NAME}-mariadb
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWD: ${DB_PASSWORD}
-      DB_PREFIX: ${DB_PREFIX:-ps_}
-      PS_FOLDER_ADMIN: admin-dev
-      PS_FOLDER_INSTALL: install
-      PS_DEV_MODE: 1
-      PS_ENABLE_SSL: 1
     networks:
       - traefik
     volumes:
       - prestashop_data:/var/www/html
     labels:
-      traefik.enable: true
+      traefik.enable: "true"
       traefik.http.routers.prestashop.entrypoints: http
       traefik.http.routers.prestashop.rule: ${URL}
       traefik.http.routers.prestashop.middlewares: redirect-to-https@file
       traefik.http.routers.prestashop-secure.entrypoints: https
       traefik.http.routers.prestashop-secure.rule: ${URL}
-      traefik.http.routers.prestashop-secure.tls: true
+      traefik.http.routers.prestashop-secure.tls: "true"
       traefik.http.routers.prestashop-secure.tls.certresolver: le
       traefik.http.services.prestashop.loadbalancer.server.port: 80
 
-  database:
-    container_name: ps-database
+  mariadb:
+    container_name: ${COMPOSE_PROJECT_NAME}-mariadb
     build:
       context: docker/database/mariadb
       dockerfile: Dockerfile
-      target: database
+      target: mariadb
     restart: ${RESTART:-unless-stopped}
     environment:
       MYSQL_ROOT_HOST: "%"
@@ -53,90 +80,15 @@ services:
     volumes:
       - database_data:/var/lib/mysql
 
-  phpmyadmin:
-    container_name: ps-phpmyadmin
-    image: phpmyadmin/phpmyadmin
-    restart: ${RESTART:-unless-stopped}
-    depends_on:
-      - database
-    environment:
-      PMA_HOST: ps-database
-      PMA_USER: ${DB_USER}
-      PMA_PASSWORD: ${DB_PASSWORD}
-      UPLOAD_LIMIT: 64M
-    networks:
-      - traefik
-    labels:
-      traefik.enable: true
-      traefik.http.routers.phpmyadmin.entrypoints: http
-      traefik.http.routers.phpmyadmin.rule: Host(`phpmyadmin.${DOMAIN}`)
-      traefik.http.routers.phpmyadmin.middlewares: redirect-to-https@file
-      traefik.http.routers.phpmyadmin-secure.entrypoints: https
-      traefik.http.routers.phpmyadmin-secure.rule: Host(`phpmyadmin.${DOMAIN}`)
-      traefik.http.routers.phpmyadmin-secure.tls: true
-      traefik.http.routers.phpmyadmin-secure.tls.certresolver: le
-      traefik.http.services.phpmyadmin.loadbalancer.server.port: 80
-
   smtp:
-    container_name: ps-smtp
+    container_name: ${COMPOSE_PROJECT_NAME}-smtp
     image: namshi/smtp
     restart: ${RESTART:-always}
     networks:
       - internal
 
-  backup:
-    container_name: ps-backup
-    image: restic/restic
-    restart: ${RESTART:-always}
-    depends_on:
-      - database
-    environment:
-      RESTIC_REPOSITORY: /backup
-      RESTIC_PASSWORD: ${RESTIC_PASSWORD}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      MYSQL_HOST: ps-database
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME}
-      BACKUP_RETENTION: 7
-      TZ: Europe/Paris
-    volumes:
-      - backup_data:/backup
-      - ./docker/restic/scripts:/scripts
-    networks:
-      - internal
-    entrypoint: ["/bin/sh", "/scripts/entrypoint.sh"]
-
-  reverse-proxy:
-    container_name: ps-reverse-proxy
-    image: traefik:v3.3.5
-    restart: ${RESTART:-always}
-    ports:
-      - 80:80
-      - 443:443
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker/traefik:/etc/traefik
-    labels:
-      traefik.enable: true
-      traefik.http.routers.traefik.entrypoints: http
-      traefik.http.routers.traefik.rule: Host(`traefik.${DOMAIN}`)
-      traefik.http.routers.traefik.middlewares: redirect-to-https@file
-      traefik.http.routers.traefik-secure.service: api@internal
-      traefik.http.routers.traefik-secure.entrypoints: https
-      traefik.http.routers.traefik-secure.rule: Host(`traefik.${DOMAIN}`)
-      traefik.http.routers.traefik-secure.tls: true
-      traefik.http.routers.traefik-secure.tls.certresolver: le
-      traefik.http.routers.metrics-secure.entrypoints: https
-      traefik.http.routers.metrics-secure.rule: Host(`traefik.${DOMAIN}`) && PathPrefix(`/metrics`)
-      traefik.http.routers.metrics-secure.tls: true
-      traefik.http.routers.metrics-secure.tls.certresolver: le
-      traefik.http.routers.metrics-secure.service: prometheus@internal
-      traefik.http.services.metrics-secure.loadbalancer.server.port: 8082
-
   prometheus:
-    container_name: ps-prometheus
+    container_name: ${COMPOSE_PROJECT_NAME}-prometheus
     image: prom/prometheus:latest
     restart: ${RESTART:-always}
     volumes:
@@ -145,18 +97,19 @@ services:
     networks:
       - traefik
     labels:
-      traefik.enable: true
+      traefik.enable: "true"
       traefik.http.routers.prometheus.entrypoints: http
       traefik.http.routers.prometheus.rule: Host(`prometheus.${DOMAIN}`)
       traefik.http.routers.prometheus.middlewares: redirect-to-https@file
+      traefik.http.routers.prometheus-secure.middlewares: basic-auth@file
       traefik.http.routers.prometheus-secure.entrypoints: https
       traefik.http.routers.prometheus-secure.rule: Host(`prometheus.${DOMAIN}`)
-      traefik.http.routers.prometheus-secure.tls: true
+      traefik.http.routers.prometheus-secure.tls: "true"
       traefik.http.routers.prometheus-secure.tls.certresolver: le
       traefik.http.services.prometheus.loadbalancer.server.port: 9090
 
   grafana:
-    container_name: ps-grafana
+    container_name: ${COMPOSE_PROJECT_NAME}-grafana
     image: grafana/grafana:latest
     restart: ${RESTART:-always}
     volumes:
@@ -166,41 +119,43 @@ services:
     networks:
       - traefik
     labels:
-      traefik.enable: true
+      traefik.enable: "true"
       traefik.http.routers.grafana.entrypoints: http
       traefik.http.routers.grafana.rule: Host(`grafana.${DOMAIN}`)
       traefik.http.routers.grafana.middlewares: redirect-to-https@file
+      traefik.http.routers.grafana-secure.middlewares: basic-auth@file
       traefik.http.routers.grafana-secure.entrypoints: https
       traefik.http.routers.grafana-secure.rule: Host(`grafana.${DOMAIN}`)
-      traefik.http.routers.grafana-secure.tls: true
+      traefik.http.routers.grafana-secure.tls: "true"
       traefik.http.routers.grafana-secure.tls.certresolver: le
       traefik.http.services.grafana.loadbalancer.server.port: 3000
 
   alertmanager:
-    container_name: ps-alertmanager
+    container_name: ${COMPOSE_PROJECT_NAME}-alertmanager
     image: prom/alertmanager:latest
     restart: ${RESTART:-always}
     volumes:
       - ./docker/monitoring/alertmanager:/etc/alertmanager
       - alertmanager_data:/alertmanager
     command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--storage.path=/alertmanager"
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
     networks:
       - traefik
     labels:
-      traefik.enable: true
+      traefik.enable: "true"
       traefik.http.routers.alertmanager.entrypoints: http
       traefik.http.routers.alertmanager.rule: Host(`alertmanager.${DOMAIN}`)
       traefik.http.routers.alertmanager.middlewares: redirect-to-https@file
+      traefik.http.routers.alertmanager-secure.middlewares: basic-auth@file
       traefik.http.routers.alertmanager-secure.entrypoints: https
       traefik.http.routers.alertmanager-secure.rule: Host(`alertmanager.${DOMAIN}`)
-      traefik.http.routers.alertmanager-secure.tls: true
+      traefik.http.routers.alertmanager-secure.tls: "true"
       traefik.http.routers.alertmanager-secure.tls.certresolver: le
       traefik.http.services.alertmanager.loadbalancer.server.port: 9093
 
   node-exporter:
-    container_name: ps-node-exporter
+    container_name: ${COMPOSE_PROJECT_NAME}-node-exporter
     image: prom/node-exporter:latest
     restart: ${RESTART:-always}
     volumes:
@@ -208,25 +163,26 @@ services:
       - /sys:/host/sys:ro
       - /:/rootfs:ro
     command:
-      - "--path.procfs=/host/proc"
-      - "--path.rootfs=/rootfs"
-      - "--path.sysfs=/host/sys"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - --path.procfs=/host/proc
+      - --path.rootfs=/rootfs
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
     networks:
       - traefik
     labels:
-      traefik.enable: true
+      traefik.enable: "true"
       traefik.http.routers.node-exporter.entrypoints: http
       traefik.http.routers.node-exporter.rule: Host(`node-exporter.${DOMAIN}`)
       traefik.http.routers.node-exporter.middlewares: redirect-to-https@file
+      traefik.http.routers.node-exporter-secure.middlewares: basic-auth@file
       traefik.http.routers.node-exporter-secure.entrypoints: https
       traefik.http.routers.node-exporter-secure.rule: Host(`node-exporter.${DOMAIN}`)
-      traefik.http.routers.node-exporter-secure.tls: true
+      traefik.http.routers.node-exporter-secure.tls: "true"
       traefik.http.routers.node-exporter-secure.tls.certresolver: le
       traefik.http.services.node-exporter.loadbalancer.server.port: 9100
 
   cadvisor:
-    container_name: ps-cadvisor
+    container_name: ${COMPOSE_PROJECT_NAME}-cadvisor
     image: gcr.io/cadvisor/cadvisor:latest
     restart: ${RESTART:-always}
     volumes:
@@ -240,40 +196,80 @@ services:
     depends_on:
       - redis
     labels:
-      traefik.enable: true
+      traefik.enable: "true"
       traefik.http.routers.cadvisor.entrypoints: http
       traefik.http.routers.cadvisor.rule: Host(`cadvisor.${DOMAIN}`)
       traefik.http.routers.cadvisor.middlewares: redirect-to-https@file
+      traefik.http.routers.cadvisor-secure.middlewares: basic-auth@file
       traefik.http.routers.cadvisor-secure.entrypoints: https
       traefik.http.routers.cadvisor-secure.rule: Host(`cadvisor.${DOMAIN}`)
-      traefik.http.routers.cadvisor-secure.tls: true
+      traefik.http.routers.cadvisor-secure.tls: "true"
       traefik.http.routers.cadvisor-secure.tls.certresolver: le
       traefik.http.services.cadvisor.loadbalancer.server.port: 8080
 
   redis:
-    container_name: ps-redis
+    container_name: ${COMPOSE_PROJECT_NAME}-redis
     image: redis:latest
     restart: ${RESTART:-always}
     networks:
+      - internal
+
+  restic:
+    container_name: ${COMPOSE_PROJECT_NAME}-restic
+    image: restic/restic
+    restart: ${RESTART:-always}
+    depends_on:
+      - mariadb
+    environment:
+      RESTIC_REPOSITORY: /backup
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      MYSQL_HOST: ${COMPOSE_PROJECT_NAME}-mariadb
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      BACKUP_RETENTION: 7
+      TZ: Europe/Paris
+    volumes:
+      - backup_data:/backup
+      - ./docker/restic/scripts:/scripts
+    networks:
+      - internal
+    entrypoint: ["/bin/sh", "/scripts/entrypoint.sh"]
+
+  # Tools
+  phpmyadmin:
+    container_name: ${COMPOSE_PROJECT_NAME}-phpmyadmin
+    image: phpmyadmin/phpmyadmin
+    restart: ${RESTART:-unless-stopped}
+    depends_on:
+      - mariadb
+    environment:
+      PMA_HOST: mariadb
+      PMA_USER: ${DB_USER}
+      PMA_PASSWORD: ${DB_PASSWORD}
+      UPLOAD_LIMIT: 64M
+    networks:
       - traefik
     labels:
-      traefik.enable: true
-      traefik.http.routers.redis.entrypoints: http
-      traefik.http.routers.redis.rule: Host(`redis.${DOMAIN}`)
-      traefik.http.routers.redis.middlewares: redirect-to-https@file
-      traefik.http.routers.redis-secure.entrypoints: https
-      traefik.http.routers.redis-secure.rule: Host(`redis.${DOMAIN}`)
-      traefik.http.routers.redis-secure.tls: true
-      traefik.http.routers.redis-secure.tls.certresolver: le
-      traefik.http.services.redis.loadbalancer.server.port: 6379
+      traefik.enable: "true"
+      traefik.http.routers.phpmyadmin.entrypoints: http
+      traefik.http.routers.phpmyadmin.rule: Host(`phpmyadmin.${DOMAIN}`)
+      traefik.http.routers.phpmyadmin.middlewares: redirect-to-https@file
+      traefik.http.routers.phpmyadmin-secure.middlewares: basic-auth@file
+      traefik.http.routers.phpmyadmin-secure.entrypoints: https
+      traefik.http.routers.phpmyadmin-secure.rule: Host(`phpmyadmin.${DOMAIN}`)
+      traefik.http.routers.phpmyadmin-secure.tls: "true"
+      traefik.http.routers.phpmyadmin-secure.tls.certresolver: le
+      traefik.http.services.phpmyadmin.loadbalancer.server.port: 80
 
 networks:
   internal:
-    name: ps-internal-network
     external: false
   traefik:
-    name: ps-traefik-network
-    external: false
+    name: ${COMPOSE_PROJECT_NAME}-traefik
+    external: true
 
 volumes:
   prestashop_data:

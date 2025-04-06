@@ -5,6 +5,8 @@ echo "PrestaShop DevOps Infrastructure Health Check"
 echo "============================================="
 echo
 
+COMPOSE_PROJECT_NAME=$1
+
 check_docker() {
   if ! docker info > /dev/null 2>&1; then
     echo "❌ Docker is not running or accessible!"
@@ -14,7 +16,7 @@ check_docker() {
 }
 
 check_containers() {
-  local containers=("ps-prestashop" "ps-database" "ps-phpmyadmin" "ps-smtp" "ps-backup" "ps-reverse-proxy" "ps-prometheus" "ps-grafana" "ps-alertmanager" "ps-node-exporter" "ps-cadvisor" "ps-redis")
+  local containers=("${COMPOSE_PROJECT_NAME}-prestashop" "${COMPOSE_PROJECT_NAME}-mariadb" "${COMPOSE_PROJECT_NAME}-phpmyadmin" "${COMPOSE_PROJECT_NAME}-smtp" "${COMPOSE_PROJECT_NAME}-restic" "${COMPOSE_PROJECT_NAME}-traefik" "${COMPOSE_PROJECT_NAME}-prometheus" "${COMPOSE_PROJECT_NAME}-grafana" "${COMPOSE_PROJECT_NAME}-alertmanager" "${COMPOSE_PROJECT_NAME}-node-exporter" "${COMPOSE_PROJECT_NAME}-cadvisor" "${COMPOSE_PROJECT_NAME}-redis")
   for container in "${containers[@]}"; do
     if docker ps --format '{{.Names}}' | grep -q "^$container$"; then
       echo "✅ Container $container is running"
@@ -24,22 +26,9 @@ check_containers() {
   done
 }
 
-check_service_accessibility() {
-  local services=("http://prestashop.localhost" "http://prometheus.ps.localhost" "http://grafana.ps.localhost")
-  local names=("PrestaShop" "Prometheus" "Grafana")
-
-  for i in "${!services[@]}"; do
-    if curl -s -I "${services[$i]}" > /dev/null 2>&1; then
-      echo "✅ ${names[$i]} is accessible"
-    else
-      echo "❌ ${names[$i]} is not accessible!"
-    fi
-  done
-}
-
 check_backup_status() {
   local latest_backup
-  latest_backup=$(docker compose exec backup restic snapshots --latest 1 2>/dev/null || echo "No backups found")
+  latest_backup=$(docker compose exec restic restic snapshots --latest 1 2>/dev/null || echo "No backups found")
   if [[ "$latest_backup" == *"No backups found"* ]]; then
     echo "❌ No backups found!"
   else
@@ -51,8 +40,4 @@ check_docker
 echo
 check_containers
 echo
-check_service_accessibility
-echo
 check_backup_status
-echo
-echo "Health check completed at $(date)"

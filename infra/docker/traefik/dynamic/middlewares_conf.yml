@@ -3,3 +3,7 @@ http:
     redirect-to-https:
       redirectscheme:
         scheme: https
+    basic-auth:
+      basicAuth:
+        users:
+          - admin:{SHA}0DPiKuNIrrVmD8IUCuw1hQxNqZc=
