@@ -2,7 +2,7 @@
 
 # --- Configuration ---
 # Available spinner characters and delays
-SPINNER_CHARS_LINE=('|' '/' '-' '\\')
+SPINNER_CHARS_LINE=('|' '/' '-' '\')
 SPINNER_CHARS_LINE_DELAY=0.1
 
 SPINNER_CHARS_DOT=('⣾' '⣽' '⣻' '⢿' '⡿' '⣟' '⣯' '⣷')

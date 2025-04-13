@@ -22,6 +22,7 @@ export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 COMPOSE_FILE
 # --- Variables ---
 TERMINAL_WIDTH := $(shell tput cols)
 HELP_SCRIPT := makefile_help.awk
+TOOLS_SCRIPT := makefile_tools.sh
 
 # --- Environment variables export ---
 # export ENV
@@ -31,9 +32,11 @@ SUCCESS := \033[0;32m[✓]\033[0m
 ERROR := \033[0;31m[✗]\033[0m
 WARNING := \033[0;33m[!]\033[0m
 
+SPINNER_TYPE ?= dot
+SPINNER_COLOR ?= yellow
 define run_command
-	bash -c "source makefile_tools.sh && \
-		start_spinner --type=dot --color=yellow && \
+	bash -c "source $(TOOLS_SCRIPT) && \
+		start_spinner --type=$(SPINNER_TYPE) --color=$(SPINNER_COLOR) && \
 		$(1) && \
 		stop_spinner"
 endef
