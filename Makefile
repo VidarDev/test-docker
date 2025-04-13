@@ -16,8 +16,12 @@ ifneq ("$(wildcard infra/compose.override.yml)","")
 	COMPOSE_FILE := $(COMPOSE_FILE):infra/compose.override.yml
 endif
 
-DOCKER_COMPOSE ?= docker compose
+DOCKER_COMPOSE ?= docker compose # docker compose or docker-compose
 export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 COMPOSE_FILE
+
+# --- Variables ---
+TERMINAL_WIDTH := $(shell tput cols)
+HELP_SCRIPT := makefile_help.awk
 
 # --- Environment variables export ---
 # export ENV
@@ -34,16 +38,13 @@ define run_command
 		stop_spinner"
 endef
 
-# --- Variables ---
-# 
-
 # --- Commandes ---
 .DEFAULT_GOAL := help
 
-### Docker
+### Docker:
 
 .PHONY: test
-test: ## [test, test2] Déploie sur l'environnement spécifié
+test: ## [bebug] Lance les tests
 test:	
 	@$(call run_command, $(MAKE) _test)
 _test:
@@ -55,25 +56,14 @@ _test:
 	@sleep 1
 	@echo -e "$(ERROR) Android Studio (version 2023.1.1) - develop for Android"
 
-### Help
-
 .PHONY: help
-HELP_CMD_WIDTH := 19
-HELP_ARGS_WIDTH := 25
 help: ## Affiche cette aide
-help:
-	@awk 'BEGIN {FS = ":.*?##"; printf "\n\033[1mUsage:\033[0m\n  make \033[33mCOMMAND\033[0m \033[36m[OPTIONS]\033[0m\n"} \
-	/^[a-zA-Z_-]+:.*?##/ { \
-		cmd = $$1; \
-		desc = $$2; \
-		args = ""; \
-		gsub(/:/, "", cmd); \
-		while (match(desc, /\[([^]]*)\]/)) { \
-			if (args != "") args = args " "; \
-			args = args substr(desc, RSTART+1, RLENGTH-2); \
-			desc = substr(desc, 1, RSTART-1) " " substr(desc, RSTART+RLENGTH); \
-		} \
-		gsub(/^[ \t]+|[ \t]+$$/, "", desc); \
-		printf "  \033[33m%-$(HELP_CMD_WIDTH)s\033[36m%-$(HELP_ARGS_WIDTH)s\033[0m%s\n", cmd, args, desc; \
-	} \
-	/^###/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk -v width=$(TERMINAL_WIDTH) \
+		-v tab_width=2 \
+		-v cmd_width=5 \
+		-v args_width=6 \
+		-v desc_width=30 \
+		-v description="Défini et exécute les commandes de l'application avec Docker." \
+		-F ':.*?##' \
+		-f $(HELP_SCRIPT) \
+		$(MAKEFILE_LIST)
