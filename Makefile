@@ -1,67 +1,79 @@
--include infra/.env
+-include infra/.env infra/.env.local
 
+# --- Makefile ---
+SHELL := bash
 MAKEFLAGS += --no-print-directory
 TAG    := $(shell git describe --tags --abbrev=0 2> /dev/null || echo 'latest')
 IMG    := ${NAME}:${TAG}
 LATEST := ${NAME}:latest
 
+# --- Docker ---
 COMPOSE_FILE ?= infra/compose.yml
 ifneq ("$(wildcard infra/compose.$(ENV).yml)","")
-	COMPOSE_FILE := infra/compose.yml:infra/compose.$(ENV).yml
+	COMPOSE_FILE := $(COMPOSE_FILE):compose.$(ENV).yml
+endif
+ifneq ("$(wildcard infra/compose.override.yml)","")
+	COMPOSE_FILE := $(COMPOSE_FILE):infra/compose.override.yml
 endif
 
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
-export COMPOSE_FILE
+DOCKER_COMPOSE ?= docker compose
+export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 COMPOSE_FILE
 
+# --- Environment variables export ---
+# export ENV
+
+# --- Utils ---
+SUCCESS := \033[0;32m[✓]\033[0m
+ERROR := \033[0;31m[✗]\033[0m
+WARNING := \033[0;33m[!]\033[0m
+
+define run_command
+	bash -c "source makefile_tools.sh && \
+		start_spinner --type=dot --color=yellow && \
+		$(1) && \
+		stop_spinner"
+endef
+
+# --- Variables ---
+# 
+
+# --- Commandes ---
 .DEFAULT_GOAL := help
-.PHONY: up stop down build restart db prestashop help health-check backup clean
 
+### Docker
+
+.PHONY: test
+test: ## [test, test2] Déploie sur l'environnement spécifié
+test:	
+	@$(call run_command, $(MAKE) _test)
+_test:
+	@echo -e "$(SUCCESS) Flutter (Channel stable, 3.29.2, on macOS 15.4 24E248 darwin-arm64, locale fr-FR)"
+	@sleep 1
+	@echo -e "$(WARNING) Xcode - develop for iOS and macOS (Xcode 16.3)"
+	@sleep 1
+	@echo -e "$(ERROR) Android Studio (version 2023.1.1) - develop for Android"
+	@sleep 1
+	@echo -e "$(ERROR) Android Studio (version 2023.1.1) - develop for Android"
+
+### Help
+
+.PHONY: help
+HELP_CMD_WIDTH := 19
+HELP_ARGS_WIDTH := 25
+help: ## Affiche cette aide
 help:
-	@echo "Usage: make <target>"
-	@echo "Targets:"
-	@echo "  up         Start the containers"
-	@echo "  stop       Stop the containers"
-	@echo "  down       Stop and remove the containers"
-	@echo "  build      Build the images"
-	@echo "  restart    Restart the containers"
-	@echo "  db         Connect to the database"
-	@echo "  prestashop Connect to the prestashop"
-	@echo "  health-check Run health check on the infrastructure"
-	@echo "  backup     Trigger a manual backup"
-	@echo "  clean      Clean up unused Docker resources"
-
-create-network:
-	docker network create ${COMPOSE_PROJECT_NAME}-traefik || true
-
-up: create-network
-	docker compose up -d
-
-stop:
-	docker compose stop
-
-down:
-	docker compose down
-
-build:
-	docker compose build
-
-restart: stop up
-
-db:
-	docker compose exec mariadb mysql -u $(DB_USER) -p$(DB_PASSWORD) $(DB_NAME)
-
-prestashop:
-	docker compose exec prestashop bash
-
-health-check:
-	@bash infra/scripts/health-check.sh $(COMPOSE_PROJECT_NAME)
-
-backup:
-	docker compose exec restic /scripts/backup.sh
-
-clean:
-	@echo "Cleaning up unused Docker resources..."
-	docker system prune -f
-	docker volume prune -f
-	@echo "Cleanup complete."
+	@awk 'BEGIN {FS = ":.*?##"; printf "\n\033[1mUsage:\033[0m\n  make \033[33mCOMMAND\033[0m \033[36m[OPTIONS]\033[0m\n"} \
+	/^[a-zA-Z_-]+:.*?##/ { \
+		cmd = $$1; \
+		desc = $$2; \
+		args = ""; \
+		gsub(/:/, "", cmd); \
+		while (match(desc, /\[([^]]*)\]/)) { \
+			if (args != "") args = args " "; \
+			args = args substr(desc, RSTART+1, RLENGTH-2); \
+			desc = substr(desc, 1, RSTART-1) " " substr(desc, RSTART+RLENGTH); \
+		} \
+		gsub(/^[ \t]+|[ \t]+$$/, "", desc); \
+		printf "  \033[33m%-$(HELP_CMD_WIDTH)s\033[36m%-$(HELP_ARGS_WIDTH)s\033[0m%s\n", cmd, args, desc; \
+	} \
+	/^###/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
