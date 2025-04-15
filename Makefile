@@ -47,7 +47,7 @@ endef
 ### Docker:
 
 .PHONY: test
-test: ## [bebug] Lance les tests
+test: ## [[[debug]], [debug]] Lance les tests Lance les tests Lance les tests Lance les tests Lance les tests
 test:	
 	@$(call run_command, $(MAKE) _test)
 _test:
@@ -60,13 +60,15 @@ _test:
 	@echo -e "$(ERROR) Android Studio (version 2023.1.1) - develop for Android"
 
 .PHONY: help
-help: ## Affiche cette aide
+help:
 	@awk -v width=$(TERMINAL_WIDTH) \
 		-v tab_width=2 \
-		-v cmd_width=5 \
-		-v args_width=6 \
-		-v desc_width=30 \
+		-v command_width=5 \
+		-v arguments_width=6 \
+		-v description_min_width=30 \
+		-v usage="Utilisation:" \
 		-v description="Défini et exécute les commandes de l'application avec Docker." \
+		-v help="Utilisez %s pour afficher cette aide." \
 		-F ':.*?##' \
 		-f $(HELP_SCRIPT) \
 		$(MAKEFILE_LIST)
