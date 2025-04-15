@@ -47,7 +47,7 @@ endef
 ### Docker:
 
 .PHONY: test
-test: ## [[[debug]], [debug]] Lance les tests Lance les tests Lance les tests Lance les tests Lance les tests
+test: ## [Test] Lance les tests Lance les tests Lance les tests Lance les tests Lance les tests
 test:	
 	@$(call run_command, $(MAKE) _test)
 _test:
