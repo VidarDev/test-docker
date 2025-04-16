@@ -12,6 +12,8 @@
 #   description         - Custom description text
 #   help                - Custom help text
 #   usage               - Custom usage text
+#
+# Created by: https://github.com/vidardev/
 # =========================================================
 
 # Helper functions
