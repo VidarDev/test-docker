@@ -21,8 +21,8 @@ export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 COMPOSE_FILE
 
 # --- Variables ---
 TERMINAL_WIDTH := $(shell tput cols)
-HELP_SCRIPT := makefile_help.awk
-TOOLS_SCRIPT := makefile_tools.sh
+HELP_SCRIPT := makefile-docs.awk
+TOOLS_SCRIPT := makefile-tools.sh
 
 # --- Environment variables export ---
 # export ENV
