@@ -92,10 +92,10 @@ BEGIN {
     indent_space = margin_space sprintf("%-*s", command_width + arguments_width + 2, "")
     line_return = "\n\n"
 
-    section_title_format = BOLD "%s" RESET line_return
+    section_title_format = "\n" BOLD "%s" RESET line_return
     command_format = margin_space COLOR_COMMAND "%-" command_width "s" RESET " " COLOR_ARGUMENTS "%-" arguments_width "s" RESET " %s\n"
     description_format = "%s" line_return
-    usage_format = BOLD "%s" RESET line_return margin_space "make " COLOR_COMMAND "COMMAND" RESET " " COLOR_ARGUMENTS "[ARGUMENTS]" RESET line_return
+    usage_format = BOLD "%s" RESET line_return margin_space "make " COLOR_COMMAND "COMMAND" RESET " " COLOR_ARGUMENTS "[ARGUMENTS]" RESET "\n"
     help_format = "\n%s" line_return
 
     # Print header
