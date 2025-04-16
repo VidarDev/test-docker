@@ -77,7 +77,7 @@ BEGIN {
     arguments_width = (arguments_width > 0) ? arguments_width : 14
     description_min_width = (description_min_width > 0) ? description_min_width : 28
 
-    custom_description = (description) ? description : "Define and run application commands with Docker."
+    custom_description = (description) ? description : "Define and run application commands."
     custom_help = (help) ? help : "Use %s to display this help."
     custom_usage = (usage) ? usage : "Usage:"
 
