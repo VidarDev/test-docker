@@ -12,3 +12,7 @@
 *.zip
 *.tar
 *.gz
+
+logs/
+*.log
+*.log.*

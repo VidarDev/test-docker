@@ -1,0 +1,66 @@
+services:
+  # --- Traefik ---
+  traefik:
+    image: traefik:v3.3.5
+    container_name: ${COMPOSE_PROJECT_NAME}_traefik
+    restart: ${RESTART_POLICY:-unless-stopped}
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env
+    networks:
+      - traefik
+    command:
+      - --providers.docker.network=${COMPOSE_PROJECT_NAME}-traefik
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./docker/traefik/acme.json:/etc/traefik/acme.json
+      - ./docker/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./docker/traefik/logs:/var/log/traefik
+    labels:
+      - "traefik.enable=true"
+
+      # HTTP
+      - "traefik.http.routers.traefik.entrypoints=http"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik.middlewares=traefik-https-redirect"
+
+      # HTTPS
+      - "traefik.http.routers.traefik-secure.entrypoints=https"
+      - "traefik.http.routers.traefik-secure.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik-secure.tls=true"
+      - "traefik.http.routers.traefik-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-secure.tls.domains[0].main=${DOMAIN}"
+      - "traefik.http.routers.traefik-secure.tls.domains[0].sans=*.${DOMAIN}"
+
+      # Dashboard
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+      - "traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.traefik-secure.service=api@internal"
+      - "traefik.http.routers.traefik-secure.middlewares=traefik-auth,default-security-headers@file"
+
+      # Metrics
+      - "traefik.http.routers.metrics-secure.entrypoints=https"
+      - "traefik.http.routers.metrics-secure.rule=Host(`traefik.${DOMAIN}`) && PathPrefix(`/metrics`)"
+      - "traefik.http.routers.metrics-secure.tls=true"
+      - "traefik.http.routers.metrics-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.metrics-secure.service=prometheus@internal"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=8082"
+
+networks:
+  traefik:
+    driver: bridge
+    external: true
+    name: ${COMPOSE_PROJECT_NAME}-traefik
+  internal:
+    driver: bridge
+    name: ${COMPOSE_PROJECT_NAME}-internal
+    external: true
+    internal: true

@@ -17,7 +17,9 @@ ifneq ("$(wildcard infra/compose.override.yml)","")
 endif
 
 DOCKER_COMPOSE ?= docker compose # docker compose or docker-compose
-export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 COMPOSE_FILE
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+export COMPOSE_FILE
 
 # --- Variables ---
 TERMINAL_WIDTH := $(shell tput cols)
@@ -47,11 +49,18 @@ endef
 ### Docker:
 
 .PHONY: up
-up: ## Démarre les conteneurs Docker
+up: ## Start the containers
 up:
 	@$(call run_command, $(MAKE) _up)
 _up:
 	$(DOCKER_COMPOSE) up -d
+
+.PHONY: down
+down: ## Stop the containers
+down:
+	@$(call run_command, $(MAKE) _down)
+_down:
+	$(DOCKER_COMPOSE) down
 
 .PHONY: help
 help:
