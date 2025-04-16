@@ -10,7 +10,7 @@ LATEST := ${NAME}:latest
 # --- Docker ---
 COMPOSE_FILE ?= infra/compose.yml
 ifneq ("$(wildcard infra/compose.$(ENV).yml)","")
-	COMPOSE_FILE := $(COMPOSE_FILE):compose.$(ENV).yml
+	COMPOSE_FILE := $(COMPOSE_FILE):infra/compose.$(ENV).yml
 endif
 ifneq ("$(wildcard infra/compose.override.yml)","")
 	COMPOSE_FILE := $(COMPOSE_FILE):infra/compose.override.yml
@@ -46,18 +46,12 @@ endef
 
 ### Docker:
 
-.PHONY: test
-test: ## [Test] Lance les tests Lance les tests Lance les tests Lance les tests Lance les tests
-test:	
-	@$(call run_command, $(MAKE) _test)
-_test:
-	@echo -e "$(SUCCESS) Flutter (Channel stable, 3.29.2, on macOS 15.4 24E248 darwin-arm64, locale fr-FR)"
-	@sleep 1
-	@echo -e "$(WARNING) Xcode - develop for iOS and macOS (Xcode 16.3)"
-	@sleep 1
-	@echo -e "$(ERROR) Android Studio (version 2023.1.1) - develop for Android"
-	@sleep 1
-	@echo -e "$(ERROR) Android Studio (version 2023.1.1) - develop for Android"
+.PHONY: up
+up: ## Démarre les conteneurs Docker
+up:
+	@$(call run_command, $(MAKE) _up)
+_up:
+	$(DOCKER_COMPOSE) up -d
 
 .PHONY: help
 help:

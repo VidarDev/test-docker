@@ -1,5 +1,22 @@
 #!/bin/bash
 
+# =========================================================
+# Bash Spinner
+#
+# Description: Display a small customizable progress spinner in bash while your commands are running
+# Usage: 
+#   source <file>.sh
+#   start_spinner --type={value} --color={value}
+#   sleep 1
+#   stop_spinner
+#
+# Parameters:
+#   --type          - Available spinner types : line, dot, mini_dot, ellipsis, jump
+#   --color         - Available spinner colors : red, green, yellow, blue, magenta, cyan, white
+#
+# Created by: https://github.com/vidardev/
+# =========================================================
+
 # --- Configuration ---
 # Available spinner characters and delays
 SPINNER_CHARS_LINE=('|' '/' '-' '\')
