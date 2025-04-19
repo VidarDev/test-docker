@@ -17,11 +17,3 @@ http:
       redirectScheme:
         scheme: https
         permanent: true
-
-tls:
-  options:
-    default:
-      minVersion: VersionTLS12
-
-    mintls13:
-      minVersion: VersionTLS13

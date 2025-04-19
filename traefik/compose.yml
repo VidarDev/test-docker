@@ -1,0 +1,90 @@
+services:
+  # --- Traefik ---
+  traefik:
+    image: traefik:v3.3.5
+    container_name: ${TRAEFIK_NETWORK}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    security_opt:
+      - no-new-privileges:true
+    env_file: .env
+    networks:
+      - traefik
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      # Global
+      TRAEFIK_GLOBAL_CHECKNEWVERSION: false
+      TRAEFIK_GLOBAL_SENDANONYMOUSUSAGE: false
+
+      # API
+      TRAEFIK_API_DASHBOARD: true
+      TRAEFIK_API_INSECURE: false
+
+      # EntryPoints
+      TRAEFIK_ENTRYPOINTS_HTTP_ADDRESS: ":80"
+      TRAEFIK_ENTRYPOINTS_HTTP_HTTP_REDIRECTIONS_ENTRYPOINT_TO: https
+      TRAEFIK_ENTRYPOINTS_HTTP_HTTP_REDIRECTIONS_ENTRYPOINT_PERMANENT: true
+      TRAEFIK_ENTRYPOINTS_HTTPS_ADDRESS: ":443"
+      TRAEFIK_ENTRYPOINTS_METRICS_ADDRESS: ":8082"
+
+      # Providers
+      TRAEFIK_PROVIDERS_DOCKER_ENDPOINT: unix:///var/run/docker.sock
+      TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT: false
+      TRAEFIK_PROVIDERS_DOCKER_NETWORK: ${TRAEFIK_NETWORK}
+      TRAEFIK_PROVIDERS_FILE_DIRECTORY: /etc/traefik/dynamic
+
+      # Certificate resolvers
+      TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_EMAIL: ${TRAEFIK_ACME_EMAIL}
+      TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_STORAGE: /etc/traefik/acme.json
+      TRAEFIK_CERTIFICATESRESOLVERS_LE_ACME_HTTPCHALLENGE_ENTRYPOINT: http
+
+      # Logs
+      TRAEFIK_LOG_LEVEL: INFO
+
+      # Metrics
+      TRAEFIK_METRICS_PROMETHEUS_ENTRYPOINT: metrics
+      TRAEFIK_METRICS_PROMETHEUS_ADDENTRYPOINTSLABELS: true
+
+      # ServersTransport
+      TRAEFIK_SERVERSTRANSPORT_INSECURESKIPVERIFY: true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/traefik/dynamic:/etc/traefik/dynamic:ro
+    labels:
+      traefik.enable: true
+
+      # HTTP
+      traefik.http.routers.traefik.entrypoints: http
+      traefik.http.routers.traefik.rule: Host(`traefik.${TRAEFIK_DOMAIN}`)
+      traefik.http.routers.traefik.middlewares: traefik-https-redirect
+
+      # HTTPS
+      traefik.http.routers.traefik-secure.entrypoints: https
+      traefik.http.routers.traefik-secure.rule: Host(`traefik.${TRAEFIK_DOMAIN}`)
+      traefik.http.routers.traefik-secure.tls: true
+      traefik.http.routers.traefik-secure.tls.certresolver: le
+      traefik.http.routers.traefik-secure.tls.domains[0].main: "${TRAEFIK_DOMAIN}"
+      traefik.http.routers.traefik-secure.tls.domains[0].sans: "*.${TRAEFIK_DOMAIN}"
+
+      # Dashboard
+      traefik.http.middlewares.traefik-auth.basicauth.users: ${TRAEFIK_HTPASSWD}
+      traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme: https
+      traefik.http.routers.traefik-secure.service: api@internal
+      traefik.http.routers.traefik-secure.middlewares: traefik-auth,default-security-headers@file
+
+      # Metrics
+      traefik.http.routers.metrics-secure.entrypoints: https
+      traefik.http.routers.metrics-secure.rule: Host(`traefik.${TRAEFIK_DOMAIN}`) && PathPrefix(`/metrics`)
+      traefik.http.routers.metrics-secure.tls: true
+      traefik.http.routers.metrics-secure.tls.certresolver: le
+      traefik.http.routers.metrics-secure.service: prometheus@internal
+      traefik.http.routers.metrics-secure.middlewares: traefik-auth,default-security-headers@file
+      traefik.http.services.prometheus.loadbalancer.server.port: 8082
+
+networks:
+  traefik:
+    driver: bridge
+    external: true
+    name: ${TRAEFIK_NETWORK}
