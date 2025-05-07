@@ -1,0 +1,74 @@
+groups:
+  - name: prestashop_alerts
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} down"
+          description: "{{ $labels.instance }} de {{ $labels.job }} est indisponible depuis plus d'une minute."
+
+      - alert: HighCpuLoad
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Utilisation CPU élevée sur {{ $labels.instance }}"
+          description: "L'utilisation CPU sur {{ $labels.instance }} est supérieure à 80% depuis 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - (node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes)) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Utilisation mémoire élevée sur {{ $labels.instance }}"
+          description: "L'utilisation de la mémoire sur {{ $labels.instance }} est supérieure à 85% depuis 5 minutes."
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Espace disque faible sur {{ $labels.instance }}"
+          description: "L'utilisation de l'espace disque sur {{ $labels.instance }} {{ $labels.mountpoint }} est supérieure à 85% depuis 5 minutes."
+
+      - alert: HighHttpErrorRate
+        expr: rate(nginx_http_requests_total{status=~"5.."}[5m]) / rate(nginx_http_requests_total[5m]) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taux d'erreurs HTTP élevé"
+          description: "Le taux d'erreurs HTTP 5xx est supérieur à 5% depuis 5 minutes."
+
+      - alert: PrestaShopContainerDown
+        expr: absent(container_last_seen{name="prestashop"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Conteneur PrestaShop indisponible"
+          description: "Le conteneur PrestaShop est indisponible depuis plus d'une minute."
+
+      - alert: MySQLContainerDown
+        expr: absent(container_last_seen{name="mysql"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Conteneur MySQL indisponible"
+          description: "Le conteneur MySQL est indisponible depuis plus d'une minute."
+
+      - alert: SlowResponseTime
+        expr: rate(nginx_http_request_duration_seconds_sum[5m]) / rate(nginx_http_request_duration_seconds_count[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Temps de réponse lent"
+          description: "Le temps de réponse moyen est supérieur à 1 seconde depuis 5 minutes."

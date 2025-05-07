@@ -1,36 +1,28 @@
 FROM alpine:latest
 
-RUN apk add --no-cache \
+RUN apk update && \
+    apk add --no-cache \
     bash \
     mysql-client \
     tzdata \
-    coreutils \
-    findutils \
-    gzip \
+    curl \
     tar \
-    grep \
-    curl
+    gzip \
+    ca-certificates
 
 RUN addgroup -g 1000 backup && \
-    adduser -u 1000 -G backup -s /bin/bash -D backup
+    adduser -D -u 1000 -G backup backup
 
-RUN mkdir -p /scripts /backups && \
-    chown -R backup:backup /scripts /backups
+RUN mkdir -p /backup && \
+    chown -R backup:backup /backup
 
-COPY --chown=backup:backup scripts/backup-mysql.sh /scripts/
-COPY --chown=backup:backup scripts/rotate-backups.sh /scripts/
-COPY --chown=backup:backup scripts/entrypoint.sh /scripts/
+COPY scripts/backup.sh /scripts/backup.sh
+COPY scripts/cleanup.sh /scripts/cleanup.sh
+COPY scripts/entrypoint.sh /scripts/entrypoint.sh
 
-RUN chmod +x /scripts/*.sh
-
-ENV BACKUP_INTERVAL=6h \
-    BACKUP_RETENTION=10 \
-    MYSQL_HOST=mysql \
-    MYSQL_DATABASE=prestashop \
-    MYSQL_USER=root
-
-WORKDIR /backups
+RUN chmod 755 /scripts/*.sh && \
+    chown -R backup:backup /scripts
 
 USER backup
 
-ENTRYPOINT ["/scripts/entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "/scripts/entrypoint.sh"]

@@ -4,7 +4,7 @@
 
 .env
 .env.*
-!.env.template
+!.env.example
 
 *.sql
 *.sql.gz
@@ -16,3 +16,7 @@
 logs/
 *.log
 *.log.*
+
+secrets/
+
+nginx/ssl/

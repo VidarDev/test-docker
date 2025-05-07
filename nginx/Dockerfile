@@ -1,18 +1,30 @@
 FROM nginx:alpine
 
-RUN apk add --no-cache openssl gettext
+RUN apk add --no-cache python3 py3-pip certbot certbot-nginx openssl
 
-RUN mkdir -p /etc/nginx/ssl && \
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/nginx/ssl/nginx.key -out /etc/nginx/ssl/nginx.crt \
-    -subj "/C=FR/ST=Hauts-de-France/L=Lille/O=PrestaShop/OU=DevOps/CN=localhost"
+RUN mkdir -p /var/cache/nginx/client_temp \
+             /var/cache/nginx/proxy_temp \
+             /var/cache/nginx/fastcgi_temp \
+             /var/cache/nginx/uwsgi_temp \
+             /var/cache/nginx/scgi_temp \
+             /var/run/nginx
 
-RUN rm /etc/nginx/conf.d/default.conf
+RUN chmod 700 /var/cache/nginx/* /var/run/nginx && \
+    chown -R nginx:nginx /var/cache/nginx /var/run/nginx
 
-COPY conf/prestashop.template.conf /etc/nginx/conf.d/
-COPY init.sh /docker-entrypoint.d/40-envsubst-on-templates.sh
+RUN mkdir -p /var/www/certbot /etc/letsencrypt /etc/nginx/ssl && \
+    chown -R nginx:nginx /etc/nginx/ssl
 
-RUN chmod +x /docker-entrypoint.d/40-envsubst-on-templates.sh && \
-    chown -R nginx:nginx /etc/nginx/ssl /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+COPY ./renew-certs.sh /usr/local/bin/renew-certs.sh
+RUN chmod +x /usr/local/bin/renew-certs.sh
 
-USER nginx
+COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+RUN sed -i 's/user nginx;/#user nginx;/' /etc/nginx/nginx.conf && \
+    sed -i 's#/var/run/#/var/run/nginx/#g' /etc/nginx/nginx.conf
+
+EXPOSE 80 443
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]

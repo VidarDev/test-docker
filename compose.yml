@@ -1,150 +1,149 @@
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+  monitoring:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  prestashop_data:
+  prometheus_data:
+  grafana_data:
+  backup_data:
+  phpmyadmin_data:
+  letsencrypt:
+  certbot-www:
+
 services:
   prestashop:
     build:
       context: ./prestashop
-    container_name: prestashop_app
+      dockerfile: Dockerfile
+    container_name: prestashop
     restart: unless-stopped
-    env_file: .env
-    environment:
-      - PS_DOMAIN=${PS_DOMAIN}
-      - DB_SERVER=mysql
-      - DB_NAME=${MYSQL_DATABASE}
-      - DB_USER=${MYSQL_USER}
-      - DB_PASSWD=${MYSQL_PASSWORD}
-      - PS_LANGUAGE=${PS_LANGUAGE}
-      - PS_INSTALL_AUTO=1
-      - PS_DEV_MODE=0
-      - PS_FOLDER_ADMIN=${PS_FOLDER_ADMIN}
-      - PS_FOLDER_INSTALL=install-prod
-    volumes:
-      - prestashop_data:/var/www/html
     depends_on:
       - mysql
+    environment:
+      - PS_DEV_MODE=${PS_DEV_MODE:-0}
+      - DB_SERVER=mysql
+      - DB_NAME=${DB_NAME:-prestashop}
+      - DB_USER=${DB_USER:-prestashop}
+      - DB_PASSWD=${DB_PASSWORD:-prestashop}
+      - PS_DOMAIN=${PS_DOMAIN:-localhost}
+      - PS_LANGUAGE=${PS_LANGUAGE:-fr}
+      - PS_COUNTRY=${PS_COUNTRY:-FR}
+      - PS_FOLDER_ADMIN=${PS_FOLDER_ADMIN:-admin123}
+      - PS_FOLDER_INSTALL=install
+      - PS_INSTALL_AUTO=${PS_INSTALL_AUTO:-1}
+      - PS_ERASE_DB=${PS_ERASE_DB:-0}
+      - ADMIN_MAIL=${ADMIN_MAIL:-demo@prestashop.com}
+      - ADMIN_PASSWD=${ADMIN_PASSWD:-prestashop_demo}
+    volumes:
+      - prestashop_data:/var/www/html
     networks:
-      - prestashop_network
-      - monitoring_network
-    user: "1000:1000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      - frontend
+      - backend
+    user: "82:82" # www-data user
 
   mysql:
     image: mysql:8.0
-    container_name: prestashop_mysql
+    container_name: mysql
     restart: unless-stopped
-    command: --default-authentication-plugin=mysql_native_password
-    env_file: .env
     environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-prestashop}
+      - MYSQL_DATABASE=${DB_NAME:-prestashop}
+      - MYSQL_USER=${DB_USER:-prestashop}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-prestashop}
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
     networks:
-      - prestashop_network
-      - backup_network
-    user: "999:999"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "root",
-          "-p${MYSQL_ROOT_PASSWORD}",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - backend
+    user: "999:999" # mysql user
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
-    container_name: prestashop_phpmyadmin
+    container_name: phpmyadmin
     restart: unless-stopped
-    environment:
-      - PMA_HOST=mysql
-      - PMA_USER=${MYSQL_USER}
-      - PMA_PASSWORD=${MYSQL_PASSWORD}
     depends_on:
       - mysql
+    environment:
+      - PMA_HOST=mysql
+      - PMA_USER=root
+      - PMA_PASSWORD=${DB_ROOT_PASSWORD:-prestashop}
+      - UPLOAD_LIMIT=128M
+    volumes:
+      - phpmyadmin_data:/etc/phpmyadmin
     networks:
-      - prestashop_network
-      - nginx_network
-    user: "1000:1000"
+      - frontend
+      - backend
 
   nginx:
     build:
       context: ./nginx
-    container_name: prestashop_nginx
+      dockerfile: Dockerfile
+    container_name: nginx
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/ssl:/etc/nginx/ssl
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
     environment:
-      - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-localhost}
-      - SSL_PROTOCOLS=${SSL_PROTOCOLS}
-      - SSL_CIPHERS=${SSL_CIPHERS}
-      - CLIENT_MAX_BODY_SIZE=${CLIENT_MAX_BODY_SIZE}
-      - PROXY_TIMEOUT=${PROXY_TIMEOUT}
-      - PHPMYADMIN_PATH=${PHPMYADMIN_PATH}
-      - GRAFANA_PATH=${GRAFANA_PATH}
-    depends_on:
-      - prestashop
-      - phpmyadmin
+      - DOMAIN=localhost
+      - EMAIL=your-email@example.com
     networks:
-      - nginx_network
-      - prestashop_network
-    user: "101:101"
+      - frontend
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=80"
+      - "prometheus.path=/nginx_metrics"
 
   prometheus:
-    build:
-      context: ./prometheus
-    container_name: prestashop_prometheus
+    image: prom/prometheus:latest
+    container_name: prometheus
     restart: unless-stopped
     volumes:
+      - ./monitoring/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
-    environment:
-      - PROMETHEUS_SCRAPE_INTERVAL=${PROMETHEUS_SCRAPE_INTERVAL}
-      - PROMETHEUS_EVAL_INTERVAL=${PROMETHEUS_EVAL_INTERVAL}
-      - NODE_EXPORTER_PORT=${NODE_EXPORTER_PORT}
-      - CADVISOR_PORT=${CADVISOR_PORT}
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
     networks:
-      - monitoring_network
-    user: "65534:65534"
+      - monitoring
+    user: "nobody:nobody"
 
   grafana:
     image: grafana/grafana:latest
-    container_name: prestashop_grafana
+    container_name: grafana
     restart: unless-stopped
     volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-    ports:
-      - "3000:3000"
+    networks:
+      - monitoring
+      - frontend
     depends_on:
       - prometheus
-    networks:
-      - monitoring_network
-      - nginx_network
-    user: "472:472"
+    user: "472:472" # grafana user
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
-    container_name: prestashop_cadvisor
+    container_name: cadvisor
     restart: unless-stopped
     volumes:
       - /:/rootfs:ro
@@ -152,18 +151,20 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
-    devices:
-      - /dev/kmsg:/dev/kmsg
-    networks:
-      - monitoring_network
-    privileged: true
     command:
       - "--docker_only=true"
       - "--housekeeping_interval=10s"
+    networks:
+      - monitoring
+    privileged: true
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8080"
+      - "prometheus.path=/metrics"
 
   node-exporter:
     image: prom/node-exporter:latest
-    container_name: prestashop_node_exporter
+    container_name: node-exporter
     restart: unless-stopped
     volumes:
       - /proc:/host/proc:ro
@@ -172,66 +173,46 @@ services:
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)"
     networks:
-      - monitoring_network
-    user: "65534:65534"
+      - monitoring
+    user: "nobody:nobody"
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=9100"
+      - "prometheus.path=/metrics"
 
   alertmanager:
-    build:
-      context: ./alertmanager
-    container_name: prestashop_alertmanager
+    image: prom/alertmanager:latest
+    container_name: alertmanager
     restart: unless-stopped
     volumes:
-      - alertmanager_data:/alertmanager
-    environment:
-      - ALERT_SMTP_HOST=${ALERT_SMTP_HOST}
-      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM}
-      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
-      - ALERT_EMAIL_USERNAME=${ALERT_EMAIL_USERNAME}
-      - ALERT_EMAIL_PASSWORD=${ALERT_EMAIL_PASSWORD}
-      - ALERT_GROUP_WAIT=${ALERT_GROUP_WAIT}
-      - ALERT_REPEAT_INTERVAL=${ALERT_REPEAT_INTERVAL}
-      - SLACK_WEBHOOK=${SLACK_WEBHOOK}
-      - SLACK_CHANNEL=${SLACK_CHANNEL}
+      - ./monitoring/alertmanager:/etc/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
     networks:
-      - monitoring_network
-    user: "65534:65534"
+      - monitoring
+    user: "nobody:nobody"
 
   backup:
     build:
       context: ./backup
-    container_name: prestashop_backup
+      dockerfile: Dockerfile
+    container_name: backup
     restart: unless-stopped
     volumes:
-      - backup_data:/backups
+      - backup_data:/backup
       - ./backup/scripts:/scripts
     environment:
       - MYSQL_HOST=mysql
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - BACKUP_INTERVAL=${BACKUP_INTERVAL}
-      - BACKUP_RETENTION=${BACKUP_RETENTION}
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${DB_ROOT_PASSWORD:-prestashop}
+      - MYSQL_DATABASE=${DB_NAME:-prestashop}
+      - BACKUP_RETENTION=${BACKUP_RETENTION:-7}
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL:-6h}
+    networks:
+      - backend
     depends_on:
       - mysql
-    networks:
-      - backup_network
-    user: "1000:1000"
-
-networks:
-  prestashop_network:
-    driver: bridge
-  nginx_network:
-    driver: bridge
-  monitoring_network:
-    driver: bridge
-  backup_network:
-    driver: bridge
-
-volumes:
-  prestashop_data:
-  mysql_data:
-  prometheus_data:
-  grafana_data:
-  alertmanager_data:
-  backup_data:
+    user: "1000:1000" # backup user
