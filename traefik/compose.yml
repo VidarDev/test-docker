@@ -1,5 +1,4 @@
 services:
-  # --- Traefik ---
   traefik:
     image: traefik:v3.3.5
     container_name: ${TRAEFIK_NETWORK}
@@ -51,7 +50,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./docker/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
     labels:
       traefik.enable: true
 
