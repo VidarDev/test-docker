@@ -1,8 +1,0 @@
-services:
-  smtp:
-    container_name: ${COMPOSE_PROJECT_NAME}-smtp
-    image: axllent/mailpit
-    restart: "${RESTART:-always}"
-    ports:
-      - 1025:1025
-      - 8025:8025

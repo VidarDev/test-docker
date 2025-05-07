@@ -1,0 +1,237 @@
+services:
+  prestashop:
+    build:
+      context: ./prestashop
+    container_name: prestashop_app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PS_DOMAIN=${PS_DOMAIN}
+      - DB_SERVER=mysql
+      - DB_NAME=${MYSQL_DATABASE}
+      - DB_USER=${MYSQL_USER}
+      - DB_PASSWD=${MYSQL_PASSWORD}
+      - PS_LANGUAGE=${PS_LANGUAGE}
+      - PS_INSTALL_AUTO=1
+      - PS_DEV_MODE=0
+      - PS_FOLDER_ADMIN=${PS_FOLDER_ADMIN}
+      - PS_FOLDER_INSTALL=install-prod
+    volumes:
+      - prestashop_data:/var/www/html
+    depends_on:
+      - mysql
+    networks:
+      - prestashop_network
+      - monitoring_network
+    user: "1000:1000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mysql:
+    image: mysql:8.0
+    container_name: prestashop_mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    env_file: .env
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - prestashop_network
+      - backup_network
+    user: "999:999"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: prestashop_phpmyadmin
+    restart: unless-stopped
+    environment:
+      - PMA_HOST=mysql
+      - PMA_USER=${MYSQL_USER}
+      - PMA_PASSWORD=${MYSQL_PASSWORD}
+    depends_on:
+      - mysql
+    networks:
+      - prestashop_network
+      - nginx_network
+    user: "1000:1000"
+
+  nginx:
+    build:
+      context: ./nginx
+    container_name: prestashop_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl
+    environment:
+      - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-localhost}
+      - SSL_PROTOCOLS=${SSL_PROTOCOLS}
+      - SSL_CIPHERS=${SSL_CIPHERS}
+      - CLIENT_MAX_BODY_SIZE=${CLIENT_MAX_BODY_SIZE}
+      - PROXY_TIMEOUT=${PROXY_TIMEOUT}
+      - PHPMYADMIN_PATH=${PHPMYADMIN_PATH}
+      - GRAFANA_PATH=${GRAFANA_PATH}
+    depends_on:
+      - prestashop
+      - phpmyadmin
+    networks:
+      - nginx_network
+      - prestashop_network
+    user: "101:101"
+
+  prometheus:
+    build:
+      context: ./prometheus
+    container_name: prestashop_prometheus
+    restart: unless-stopped
+    volumes:
+      - prometheus_data:/prometheus
+    environment:
+      - PROMETHEUS_SCRAPE_INTERVAL=${PROMETHEUS_SCRAPE_INTERVAL}
+      - PROMETHEUS_EVAL_INTERVAL=${PROMETHEUS_EVAL_INTERVAL}
+      - NODE_EXPORTER_PORT=${NODE_EXPORTER_PORT}
+      - CADVISOR_PORT=${CADVISOR_PORT}
+    networks:
+      - monitoring_network
+    user: "65534:65534"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: prestashop_grafana
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring_network
+      - nginx_network
+    user: "472:472"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: prestashop_cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    networks:
+      - monitoring_network
+    privileged: true
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=10s"
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: prestashop_node_exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - monitoring_network
+    user: "65534:65534"
+
+  alertmanager:
+    build:
+      context: ./alertmanager
+    container_name: prestashop_alertmanager
+    restart: unless-stopped
+    volumes:
+      - alertmanager_data:/alertmanager
+    environment:
+      - ALERT_SMTP_HOST=${ALERT_SMTP_HOST}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
+      - ALERT_EMAIL_USERNAME=${ALERT_EMAIL_USERNAME}
+      - ALERT_EMAIL_PASSWORD=${ALERT_EMAIL_PASSWORD}
+      - ALERT_GROUP_WAIT=${ALERT_GROUP_WAIT}
+      - ALERT_REPEAT_INTERVAL=${ALERT_REPEAT_INTERVAL}
+      - SLACK_WEBHOOK=${SLACK_WEBHOOK}
+      - SLACK_CHANNEL=${SLACK_CHANNEL}
+    networks:
+      - monitoring_network
+    user: "65534:65534"
+
+  backup:
+    build:
+      context: ./backup
+    container_name: prestashop_backup
+    restart: unless-stopped
+    volumes:
+      - backup_data:/backups
+      - ./backup/scripts:/scripts
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL}
+      - BACKUP_RETENTION=${BACKUP_RETENTION}
+    depends_on:
+      - mysql
+    networks:
+      - backup_network
+    user: "1000:1000"
+
+networks:
+  prestashop_network:
+    driver: bridge
+  nginx_network:
+    driver: bridge
+  monitoring_network:
+    driver: bridge
+  backup_network:
+    driver: bridge
+
+volumes:
+  prestashop_data:
+  mysql_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  backup_data:
