@@ -17,6 +17,4 @@ logs/
 *.log
 *.log.*
 
-secrets/
-
 nginx/ssl/
