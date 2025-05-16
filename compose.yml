@@ -1,0 +1,218 @@
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+  monitoring:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  prestashop_data:
+  prometheus_data:
+  grafana_data:
+  backup_data:
+  phpmyadmin_data:
+  letsencrypt:
+  certbot-www:
+
+services:
+  prestashop:
+    build:
+      context: ./prestashop
+      dockerfile: Dockerfile
+    container_name: prestashop
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      - PS_DEV_MODE=${PS_DEV_MODE:-0}
+      - DB_SERVER=mysql
+      - DB_NAME=${DB_NAME:-prestashop}
+      - DB_USER=${DB_USER:-prestashop}
+      - DB_PASSWD=${DB_PASSWORD:-prestashop}
+      - PS_DOMAIN=${PS_DOMAIN:-localhost}
+      - PS_LANGUAGE=${PS_LANGUAGE:-fr}
+      - PS_COUNTRY=${PS_COUNTRY:-FR}
+      - PS_FOLDER_ADMIN=${PS_FOLDER_ADMIN:-admin123}
+      - PS_FOLDER_INSTALL=install
+      - PS_INSTALL_AUTO=${PS_INSTALL_AUTO:-1}
+      - PS_ERASE_DB=${PS_ERASE_DB:-0}
+      - ADMIN_MAIL=${ADMIN_MAIL:-demo@prestashop.com}
+      - ADMIN_PASSWD=${ADMIN_PASSWD:-prestashop_demo}
+    volumes:
+      - prestashop_data:/var/www/html
+    networks:
+      - frontend
+      - backend
+    user: "82:82" # www-data user
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-prestashop}
+      - MYSQL_DATABASE=${DB_NAME:-prestashop}
+      - MYSQL_USER=${DB_USER:-prestashop}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-prestashop}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - backend
+    user: "999:999" # mysql user
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      - PMA_HOST=mysql
+      - PMA_USER=root
+      - PMA_PASSWORD=${DB_ROOT_PASSWORD:-prestashop}
+      - UPLOAD_LIMIT=128M
+    volumes:
+      - phpmyadmin_data:/etc/phpmyadmin
+    networks:
+      - frontend
+      - backend
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    environment:
+      - DOMAIN=localhost
+      - EMAIL=your-email@example.com
+    networks:
+      - frontend
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=80"
+      - "prometheus.path=/nginx_metrics"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    networks:
+      - monitoring
+    user: "nobody:nobody"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - monitoring
+      - frontend
+    depends_on:
+      - prometheus
+    user: "472:472" # grafana user
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=10s"
+    networks:
+      - monitoring
+    privileged: true
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8080"
+      - "prometheus.path=/metrics"
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - monitoring
+    user: "nobody:nobody"
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=9100"
+      - "prometheus.path=/metrics"
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - monitoring
+    user: "nobody:nobody"
+
+  backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    container_name: backup
+    restart: unless-stopped
+    volumes:
+      - backup_data:/backup
+      - ./backup/scripts:/scripts
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${DB_ROOT_PASSWORD:-prestashop}
+      - MYSQL_DATABASE=${DB_NAME:-prestashop}
+      - BACKUP_RETENTION=${BACKUP_RETENTION:-7}
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL:-6h}
+    networks:
+      - backend
+    depends_on:
+      - mysql
+    user: "1000:1000" # backup user

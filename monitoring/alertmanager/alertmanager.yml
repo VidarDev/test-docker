@@ -1,0 +1,57 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "smtp.example.com:587"
+  smtp_from: "alertmanager@example.com"
+  smtp_auth_username: "${SMTP_USER}"
+  smtp_auth_password: "${SMTP_PASSWORD}"
+  smtp_require_tls: true
+
+templates:
+  - "/etc/alertmanager/template/*.tmpl"
+
+route:
+  group_by: ["alertname", "cluster", "service"]
+
+  group_wait: 30s
+
+  group_interval: 5m
+
+  repeat_interval: 4h
+
+  receiver: "email-admin"
+
+  routes:
+    - match:
+        severity: critical
+      receiver: "email-admin"
+      continue: true
+
+    - match:
+        severity: warning
+      receiver: "slack-notifications"
+      continue: true
+
+receivers:
+  - name: "email-admin"
+    email_configs:
+      - to: "${ADMIN_EMAIL}"
+        send_resolved: true
+        html: '{{ template "email.html" . }}'
+        headers:
+          subject: '{{ template "email.subject" . }}'
+
+  - name: "slack-notifications"
+    slack_configs:
+      - api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+        channel: "#prestashop-alerts"
+        send_resolved: true
+        icon_url: "https://avatars3.githubusercontent.com/u/3380462"
+        title: '{{ template "slack.title" . }}'
+        text: '{{ template "slack.text" . }}'
+
+inhibit_rules:
+  - source_match:
+      severity: "critical"
+    target_match:
+      severity: "warning"
+    equal: ["alertname", "cluster", "service"]
